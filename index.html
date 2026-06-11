@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>我的全功能运动习惯追踪器</title>
+    <style>
+        /* 基础页面样式 */
+        body {
+            font-family: 'PingFang SC', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
+            background-color: #f0f2f5;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+        }
+        .container {
+            max-width: 450px;
+            width: 100%;
+            background: white;
+            padding: 25px;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.05);
+        }
+        
+        /* 顶部导航控制栏 */
+        .calendar-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 5px;
+        }
+        .calendar-header h2 {
+            color: #1d1d1f;
+            margin: 0;
+            font-size: 22px;
+        }
+        .nav-btn {
+            background-color: #f5f5f7;
+            border: none;
+            color: #0071e3;
+            font-size: 18px;
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background-color 0.2s;
+        }
+        .nav-btn:hover { background-color: #e8e8ed; }
+
+        .subtitle {
+            text-align: center;
+            color: #86868b;
+            font-size: 13px;
+            margin-bottom: 25px;
+            margin-top: 5px;
+        }
+
+        /* 日历网格 */
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 10px;
+        }
+        .weekday {
+            text-align: center;
+            font-weight: bold;
+            color: #86868b;
+            font-size: 12px;
+            padding-bottom: 5px;
+        }
+        .day-box {
+            aspect-ratio: 1;
+            border-radius: 10px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            user-select: none;
+            position: relative;
+        }
+        .day-num {
+            font-size: 12px;
+            font-weight: bold;
+            margin-bottom: 2px;
+        }
+        .status-icon {
+            font-size: 15px;
+            font-weight: bold;
+        }
+
+        /* 鼠标悬停显示运动详情的小气泡提示 */
+        .day-box:hover .tooltip {
+            display: block;
+        }
+        .tooltip {
+            display: none;
+            position: absolute;
+            bottom: 115%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.85);
+            color: white;
+            padding: 6px 10px;
+            font-size: 11px;
+            border-radius: 6px;
+            white-space: nowrap;
+            z-index: 10;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
+
+        /* 三种状态的颜色控制 */
+        /* 1. 默认状态：无数据 */
+        .status-none { background-color: #f5f5f7; color: #86868b; }
+        .status-none:hover { background-color: #e8e8ed; }
+
+        /* 2. 打勾状态：运动了 */
+        .status-checked { background-color: #34c759; color: white; }
+        
+        /* 3. 打叉状态：没运动 */
+        .status-crossed { background-color: #ff3b30; color: white; }
+
+        /* 底部统计看板 */
+        .stats-panel {
+            margin-top: 25px;
+            background: #f5f5f7;
+            padding: 15px;
+            border-radius: 12px;
+            display: flex;
+            justify-content: space-around;
+        }
+        .stat-item {
+            text-align: center;
+        }
+        .stat-val {
+            font-size: 20px;
+            font-weight: bold;
+            color: #1d1d1f;
+        }
+        .stat-lbl {
+            font-size: 12px;
+            color: #86868b;
+            margin-top: 4px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="calendar-header">
+        <button class="nav-btn" onclick="changeMonth(-1)">◀</button>
+        <h2 id="monthTitle">2026年 6月</h2>
+        <button class="nav-btn" onclick="changeMonth(1)">▶</button>
+    </div>
+    <div class="subtitle">点击格子：🟢有运动(填数据) / 🔴没运动 / ⚪清空</div>
+    
+    <div class="grid">
+        <div class="weekday">日</div>
+        <div class="weekday">一</div>
+        <div class="weekday">二</div>
+        <div class="weekday">三</div>
+        <div class="weekday">四</div>
+        <div class="weekday">五</div>
+        <div class="weekday">六</div>
+        
+        <div id="calendarDays" style="display: contents;"></div>
+    </div>
+
+    <div class="stats-panel">
+        <div class="stat-item">
+            <div class="stat-val" id="statCount">0 天</div>
+            <div class="stat-lbl">本月运动</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-val" id="statTime">0 分钟</div>
+            <div class="stat-lbl">累计时长</div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // 初始化当前的显示的年月对象
+    let currentDisplayDate = new Date();
+    
+    // 从浏览器的本地存储获取历史数据
+    let habitData = JSON.parse(localStorage.getItem('combinedHabitData')) || {};
+
+    // 页面首次加载时自动渲染
+    window.onload = function() {
+        renderCalendar();
+    };
+
+    // 核心渲染日历网格和数据的函数
+    function renderCalendar() {
+        const year = currentDisplayDate.getFullYear();
+        const month = currentDisplayDate.getMonth();
+
+        // 刷新顶部的年月标题文字
+        document.getElementById('monthTitle').innerText = `${year}年 ${month + 1}月`;
+
+        const container = document.getElementById('calendarDays');
+        container.innerHTML = ''; // 清空上一月的内容
+
+        // 1. 计算当前月第一天是星期几，用来在前排插入空白格子补齐
+        const firstDayOfWeek = new Date(year, month, 1).getDay();
+        for (let i = 0; i < firstDayOfWeek; i++) {
+            const blank = document.createElement('div');
+            container.appendChild(blank);
+        }
+
+        // 2. 获取当前月一共有多少天
+        const totalDays = new Date(year, month + 1, 0).getDate();
+
+        // 本月统计变量重置
+        let monthlyCount = 0;
+        let monthlyDuration = 0;
+
+        // 3. 循环渲染每天的格子
+        for (let day = 1; day <= totalDays; day++) {
+            // 生成独一无二的日期 Key（如 "2026-06-11"）
+            const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+            
+            // 获取这一天的数据
+            const dayData = habitData[dateStr] || null;
+            const currentStatus = dayData ? dayData.status : '';
+
+            // 创建格子的 HTML 节点
+            const box = document.createElement('div');
+            box.className = 'day-box';
+            
+            // 根据数据状态渲染不同的背景皮肤和图标
+            if (currentStatus === '✓') {
+                box.classList.add('status-checked');
+                box.innerHTML = `<span class="day-num">${day}</span><span class="status-icon">✓</span>`;
+                
+                // 拼接悬停小气泡的提示文本
+                const tooltipText = `${dayData.type || '运动'}: ${dayData.duration || 0}分钟`;
+                box.innerHTML += `<div class="tooltip">${tooltipText}</div>`;
+                
+                // 累加当月的统计数据
+                monthlyCount++;
+                monthlyDuration += parseInt(dayData.duration || 0);
+
+            } else if (currentStatus === '✗') {
+                box.classList.add('status-crossed');
+                box.innerHTML = `<span class="day-num">${day}</span><span class="status-icon">✗</span>`;
+            } else {
+                box.classList.add('status-none');
+                box.innerHTML = `<span class="day-num">${day}</span><span class="status-icon">·</span>`;
+            }
+
+            // 绑定点击事件，处理状态切换
+            box.onclick = function() {
+                toggleStatus(dateStr, currentStatus);
+            };
+
+            container.appendChild(box);
+        }
+
+        // 将当月的实时统计数据刷到页面底部的看板上
+        document.getElementById('statCount').innerText = `${monthlyCount} 天`;
+        document.getElementById('statTime').innerText = `${monthlyDuration} 分钟`;
+    }
+
+    // 处理状态切换和弹窗记录
+    function toggleStatus(dateStr, currentStatus) {
+        if (currentStatus === '') {
+            // 状态一：【无】-> 【有运动✓】
+            const type = prompt("今天做了什么运动？（例如：跑步、健身、羽毛球）", "跑步");
+            if (type === null) return; // 对应如果点击了弹窗的取消，则直接退出，不改变状态
+            
+            const duration = prompt("运动了多少分钟？", "30");
+            if (duration === null) return;
+
+            // 写入复合格式的数据
+            habitData[dateStr] = {
+                status: '✓',
+                type: type.trim() || '运动',
+                duration: isNaN(parseInt(duration)) ? 0 : parseInt(duration)
+            };
+        } else if (currentStatus === '✓') {
+            // 状态二：【有运动✓】 -> 【没运动✗】
+            habitData[dateStr] = { status: '✗' };
+        } else {
+            // 状态三：【没运动✗】 -> 【清空重置】
+            delete habitData[dateStr];
+        }
+
+        // 把更新完的最新总数据存进本地存储
+        localStorage.setItem('combinedHabitData', JSON.stringify(habitData));
+        // 重新刷新一下日历网格
+        renderCalendar();
+    }
+
+    // 左右按钮点击切换月份
+    function changeMonth(direction) {
+        currentDisplayDate.setMonth(currentDisplayDate.getMonth() + direction);
+        renderCalendar();
+    }
+</script>
+
+</body>
+</html>
